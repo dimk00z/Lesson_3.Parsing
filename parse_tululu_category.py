@@ -8,9 +8,7 @@ def get_categoty_pages_number(category_url):
     response.raise_for_status()
     soup = BeautifulSoup(response.text, 'lxml')
     max_page_number = soup.select('p.center a.npage')
-    category_pages_number = int(
-        max_page_number[-1].text) if max_page_number else 1
-    return category_pages_number
+    return int(max_page_number[-1].text) if max_page_number else 1
 
 
 def get_ids_from_category_page(page_url):
