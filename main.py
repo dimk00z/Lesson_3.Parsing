@@ -3,16 +3,17 @@ import re
 import json
 import argparse
 from urllib.parse import urljoin
-from parse_tululu_category import get_ids_for_category, get_categoty_pages_number
+from parse_tululu_category import get_ids_for_category, get_category_pages_number
 from bs4 import BeautifulSoup
 from pathlib import Path
+from pathvalidate import sanitize_filename
 
 
 def download_txt(book_url, book_id, book_name,
                  directory_for_save):
     books_dir_path = Path.joinpath(directory_for_save, 'books')
     Path(books_dir_path).mkdir(parents=True, exist_ok=True)
-    response = requests.get(book_url)
+    response = requests.get(book_url, allow_redirects=False)
     response.raise_for_status()
     path_for_saving = Path.joinpath(
         books_dir_path, f'{book_id}.{book_name}.txt')
@@ -25,7 +26,7 @@ def download_image(image_url, book_id,
                    directory_for_save):
     images_dir_path = Path.joinpath(directory_for_save, 'images')
     Path(images_dir_path).mkdir(parents=True, exist_ok=True)
-    response = requests.get(image_url)
+    response = requests.get(image_url, allow_redirects=False)
     response.raise_for_status()
     path_for_saving = Path.joinpath(
         images_dir_path, f'{book_id}.jpg')
@@ -41,13 +42,11 @@ def parse_book_url(url):
     soup = BeautifulSoup(response.text, 'lxml')
     book_info['book_title'], book_info['book_author'] = soup.select_one(
         'h1').text.split(" \xa0 :: \xa0 ")
-    for url in soup.select('table.d_book td a'):
-        if url.text == 'скачать txt':
-            book_info['book_url'] = f'http://tululu.org{url.get("href")}'
-            break
+    book_info['book_url'] = urljoin(url, soup.find(
+        'a', title=f'{book_info["book_title"]} - скачать книгу txt')['href'])
     img_url = soup.select_one('div.bookimage img').get('src')
-    if img_url != '/images/nopic.gif':
-        book_info['book_image_url'] = f'http://tululu.org{img_url}'
+    if 'nopic.gif' not in img_url:
+        book_info['book_image_url'] = urljoin(url, img_url)
     comments = soup.select('div.texts span.black')
     book_info['comments'] = [comment.text for comment in comments]
     genres = soup.select_one('div#content span.d_book').select('a')
@@ -71,7 +70,7 @@ def get_books(ids_for_category, args):
             if (not args.skip_txt):
                 book_info['book_path'] = download_txt(book_info['book_url'],
                                                       book_info['book_id'],
-                                                      remove_invalid_symbols_from_filename(
+                                                      sanitize_filename(
                     book_info['book_title']),
                     args.dest_folder)
                 print(
@@ -84,10 +83,6 @@ def get_books(ids_for_category, args):
     return books_info
 
 
-def remove_invalid_symbols_from_filename(filename):
-    return re.sub(r'[\\\\/*?:"<>|]', "", filename)
-
-
 def save_books_json(books_info, json_file_name, dest_folder):
     json_file_name = Path.joinpath(
         dest_folder, json_file_name)
@@ -95,7 +90,7 @@ def save_books_json(books_info, json_file_name, dest_folder):
         json.dump(books_info, json_file, ensure_ascii=False)
 
 
-def get_arg(parser):
+def get_arguments(parser):
     parser.add_argument('--start_page', type=int, default=1,
                         help="input start page for parsing")
     parser.add_argument('--end_page', type=int, default=2,
@@ -115,11 +110,11 @@ def get_arg(parser):
 
 
 def main():
-    args = get_arg(argparse.ArgumentParser())
-    categoty_pages_number = get_categoty_pages_number(args.category_url)
+    args = get_arguments(argparse.ArgumentParser())
+    category_pages_number = get_category_pages_number(args.category_url)
     # минимальное значение используется, если пользователь ввел страницу большую, чем есть в категории
     end_page = min(
-        args.end_page, categoty_pages_number) if args.end_page else categoty_pages_number
+        args.end_page, category_pages_number) if args.end_page else category_pages_number
     ids_for_category = get_ids_for_category(
         args.category_url, args.start_page, end_page)
     books_info = get_books(ids_for_category, args)

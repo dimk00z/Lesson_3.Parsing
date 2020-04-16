@@ -3,8 +3,8 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 
-def get_categoty_pages_number(category_url):
-    response = requests.get(category_url)
+def get_category_pages_number(category_url):
+    response = requests.get(category_url, allow_redirects=False)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, 'lxml')
     max_page_number = soup.select('p.center a.npage')
@@ -12,7 +12,7 @@ def get_categoty_pages_number(category_url):
 
 
 def get_ids_from_category_page(page_url):
-    response = requests.get(page_url)
+    response = requests.get(page_url, allow_redirects=False)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, 'lxml')
     books_links = soup.select('table.d_book div.bookimage a')
@@ -24,4 +24,4 @@ def get_ids_for_category(category_url, start_page, end_page):
     for category_page_number in range(start_page, end_page+1):
         category_page_url = urljoin(category_url, str(category_page_number))
         ids_for_category.extend(get_ids_from_category_page(category_page_url))
-    return(ids_for_category)
+    return ids_for_category
