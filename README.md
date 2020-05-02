@@ -12,7 +12,7 @@ pip install -r requirements.txt
 
 ### Для запуска в консоли:
 
-`$ python main.py`
+`$ python parse_tululu.py`
 
 Для программы доступны следующие параметры:
 
@@ -32,7 +32,7 @@ pip install -r requirements.txt
 
 Пример использования:
 ```
-$ python main.py 
+$ python parse_tululu.py 
 Downloaded 'Алиби' - ИВАНОВ Сергей from http://tululu.org/b239
 Downloaded 'Бич небесный' - Стерлинг Брюс from http://tululu.org/b550
 Downloaded 'Цена посвящения: Серый Ангел' - Маркеев Олег Георгиевич from http://tululu.org/b768
@@ -56,6 +56,7 @@ Downloaded 'Будет скафандр - будут и путешествия' 
 Downloaded 'Дочь Нефертити' - Семенова Татьяна from http://tululu.org/b9402
 Downloaded 'Наложница императора' - Семенова Татьяна from http://tululu.org/b10768
 Downloaded 'Общая теория Доминант' - Белохвостов Денис from http://tululu.org/b10923
+Total 23 books downloaded
 
 ```
 ### Цель проекта
