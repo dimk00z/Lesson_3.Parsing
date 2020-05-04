@@ -40,7 +40,7 @@ def get_tululu_response(url):
 
 def get_category_pages_number(category_url):
     response = get_tululu_response(category_url)
-    if response:
+    if response is not None:
         soup = BeautifulSoup(response.text, 'lxml')
         category_page_numbers = soup.select('p.center a.npage')
         return int(category_page_numbers[-1].text) if category_page_numbers else 1
@@ -51,7 +51,7 @@ def get_book_ids(category_url, start_page, end_page):
     for category_page_number in range(start_page, end_page+1):
         category_page_url = urljoin(category_url, str(category_page_number))
         response = get_tululu_response(category_page_url)
-        if response:
+        if response is not None:
             soup = BeautifulSoup(response.text, 'lxml')
             books_links = soup.select('table.d_book div.bookimage a')
             ids_for_category.extend(
@@ -64,7 +64,7 @@ def download_txt(book_url, book_id, book_name,
     books_dir_path = Path.joinpath(directory_for_save, 'books')
     Path(books_dir_path).mkdir(parents=True, exist_ok=True)
     response = get_tululu_response(book_url)
-    if response:
+    if response is not None:
         path_for_saving = Path.joinpath(
             books_dir_path, f'{book_id}.{book_name}.txt')
         with open(path_for_saving, 'wb') as file:
@@ -77,7 +77,7 @@ def download_image(image_url, book_id,
     images_dir_path = Path.joinpath(directory_for_save, 'images')
     Path(images_dir_path).mkdir(parents=True, exist_ok=True)
     response = get_tululu_response(image_url)
-    if response:
+    if response is not None:
         path_for_saving = Path.joinpath(
             images_dir_path, f'{book_id}.jpg')
         with open(path_for_saving, 'wb') as file:
@@ -103,7 +103,7 @@ def parse_book_url(url):
             genres = soup.select_one('div#content span.d_book').select('a')
             parsed_book['genres'] = [genre.text for genre in genres]
         except:
-            print("Unexpected error:", sys.exc_info()[0])
+            print(f"Unexpected error:{sys.exc_info()[0]} for {url}")
         return parsed_book
 
 
@@ -112,7 +112,7 @@ def download_books(book_ids, args):
     for book_id in book_ids:
         book_url = urljoin('http://tululu.org/', book_id)
         parsed_book = parse_book_url(book_url)
-        if parsed_book:
+        if 'book_url' in parsed_book:
             parsed_book['book_id'] = book_id
             if not args.skip_txt:
                 parsed_book['book_path'] = download_txt(parsed_book['book_url'],
