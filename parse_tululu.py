@@ -40,11 +40,10 @@ def get_tululu_response(url):
 
 def get_category_pages_number(category_url):
     response = get_tululu_response(category_url)
-    if response is None:
-        return
-    soup = BeautifulSoup(response.text, 'lxml')
-    category_page_numbers = soup.select('p.center a.npage')
-    return int(category_page_numbers[-1].text) if category_page_numbers else 1
+    if response:
+        soup = BeautifulSoup(response.text, 'lxml')
+        category_page_numbers = soup.select('p.center a.npage')
+        return int(category_page_numbers[-1].text) if category_page_numbers else 1
 
 
 def get_book_ids(category_url, start_page, end_page):
@@ -52,12 +51,11 @@ def get_book_ids(category_url, start_page, end_page):
     for category_page_number in range(start_page, end_page+1):
         category_page_url = urljoin(category_url, str(category_page_number))
         response = get_tululu_response(category_page_url)
-        if response is None:
-            continue
-        soup = BeautifulSoup(response.text, 'lxml')
-        books_links = soup.select('table.d_book div.bookimage a')
-        ids_for_category.extend(
-            [book_link.get('href').rsplit('/')[-2] for book_link in books_links])
+        if response:
+            soup = BeautifulSoup(response.text, 'lxml')
+            books_links = soup.select('table.d_book div.bookimage a')
+            ids_for_category.extend(
+                [book_link.get('href').rsplit('/')[-2] for book_link in books_links])
     return ids_for_category
 
 
@@ -66,13 +64,12 @@ def download_txt(book_url, book_id, book_name,
     books_dir_path = Path.joinpath(directory_for_save, 'books')
     Path(books_dir_path).mkdir(parents=True, exist_ok=True)
     response = get_tululu_response(book_url)
-    if response is None:
-        return
-    path_for_saving = Path.joinpath(
-        books_dir_path, f'{book_id}.{book_name}.txt')
-    with open(path_for_saving, 'wb') as file:
-        file.write(response.content)
-    return str(path_for_saving)
+    if response:
+        path_for_saving = Path.joinpath(
+            books_dir_path, f'{book_id}.{book_name}.txt')
+        with open(path_for_saving, 'wb') as file:
+            file.write(response.content)
+        return str(path_for_saving)
 
 
 def download_image(image_url, book_id,
@@ -80,36 +77,34 @@ def download_image(image_url, book_id,
     images_dir_path = Path.joinpath(directory_for_save, 'images')
     Path(images_dir_path).mkdir(parents=True, exist_ok=True)
     response = get_tululu_response(image_url)
-    if response is None:
-        return
-    path_for_saving = Path.joinpath(
-        images_dir_path, f'{book_id}.jpg')
-    with open(path_for_saving, 'wb') as file:
-        file.write(response.content)
-    return str(path_for_saving)
+    if response:
+        path_for_saving = Path.joinpath(
+            images_dir_path, f'{book_id}.jpg')
+        with open(path_for_saving, 'wb') as file:
+            file.write(response.content)
+        return str(path_for_saving)
 
 
 def parse_book_url(url):
     parsed_book = {}
     response = get_tululu_response(url)
-    if response is None:
-        return
-    soup = BeautifulSoup(response.text, 'lxml')
-    try:
-        parsed_book['book_title'], parsed_book['book_author'] = soup.select_one(
-            'h1').text.split(" \xa0 :: \xa0 ")
-        parsed_book['book_url'] = urljoin(url, soup.find(
-            'a', title=f'{parsed_book["book_title"]} - скачать книгу txt')['href'])
-        img_url = soup.select_one('div.bookimage img').get('src')
-        if 'nopic.gif' not in img_url:
-            parsed_book['book_image_url'] = urljoin(url, img_url)
-        comments = soup.select('div.texts span.black')
-        parsed_book['comments'] = [comment.text for comment in comments]
-        genres = soup.select_one('div#content span.d_book').select('a')
-        parsed_book['genres'] = [genre.text for genre in genres]
-    except Exception:
-        return
-    return parsed_book
+    if response:
+        soup = BeautifulSoup(response.text, 'lxml')
+        try:
+            parsed_book['book_title'], parsed_book['book_author'] = soup.select_one(
+                'h1').text.split(" \xa0 :: \xa0 ")
+            parsed_book['book_url'] = urljoin(url, soup.find(
+                'a', title=f'{parsed_book["book_title"]} - скачать книгу txt')['href'])
+            img_url = soup.select_one('div.bookimage img').get('src')
+            if 'nopic.gif' not in img_url:
+                parsed_book['book_image_url'] = urljoin(url, img_url)
+            comments = soup.select('div.texts span.black')
+            parsed_book['comments'] = [comment.text for comment in comments]
+            genres = soup.select_one('div#content span.d_book').select('a')
+            parsed_book['genres'] = [genre.text for genre in genres]
+        except Exception:
+            return
+        return parsed_book
 
 
 def download_books(book_ids, args):
@@ -117,24 +112,23 @@ def download_books(book_ids, args):
     for book_id in book_ids:
         book_url = urljoin('http://tululu.org/', book_id)
         parsed_book = parse_book_url(book_url)
-        if parsed_book is None:
-            continue
-        parsed_book['book_id'] = book_id
-        if not args.skip_txt:
-            parsed_book['book_path'] = download_txt(parsed_book['book_url'],
-                                                    parsed_book['book_id'],
-                                                    sanitize_filename(
-                parsed_book['book_title']),
-                args.dest_folder)
-            print(
-                f'''Downloaded '{parsed_book["book_title"]}' - {parsed_book["book_author"]} '''
-                f'''from http://tululu.org/{parsed_book["book_id"]}''')
+        if parsed_book:
+            parsed_book['book_id'] = book_id
+            if not args.skip_txt:
+                parsed_book['book_path'] = download_txt(parsed_book['book_url'],
+                                                        parsed_book['book_id'],
+                                                        sanitize_filename(
+                    parsed_book['book_title']),
+                    args.dest_folder)
+                print(
+                    f'''Downloaded '{parsed_book["book_title"]}' - {parsed_book["book_author"]} '''
+                    f'''from http://tululu.org/{parsed_book["book_id"]}''')
 
-        if 'book_image_url' in parsed_book and not args.skip_imgs:
-            parsed_book['img_src'] = download_image(parsed_book['book_image_url'],
-                                                    parsed_book['book_id'],
-                                                    args.dest_folder)
-        parsed_books.append(parsed_book)
+            if 'book_image_url' in parsed_book and not args.skip_imgs:
+                parsed_book['img_src'] = download_image(parsed_book['book_image_url'],
+                                                        parsed_book['book_id'],
+                                                        args.dest_folder)
+            parsed_books.append(parsed_book)
     return parsed_books
 
 
