@@ -1,8 +1,8 @@
 import requests
 import time
-import re
 import json
 import argparse
+import sys
 from urllib.parse import urljoin
 from random import randrange
 from urllib.parse import urljoin
@@ -13,42 +13,51 @@ from pathvalidate import sanitize_filename
 CONECTIONS_ATTEMPTS = 3
 
 
-def tululu_response(url):
+def get_tululu_response(url):
     headers = {"User-Agent": 'Mozilla/5.0 (X11 Linux x86_64) AppleWebKit/537.36 \
             (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'}
     for connection_attempt in range(CONECTIONS_ATTEMPTS):
         try:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
-            if response.status_code not in [301, 302]:
-                return response
+            if response.status_code in [301, 302]:
+                return
+        except requests.exceptions.HTTPError as error:
+            print("Http Error:", error)
             time.sleep(randrange(1, 3))
-        except Exception:
-            print(f"Cann't connect to {url}")
+        except requests.exceptions.ConnectionError as error:
+            print("Error Connecting:", error)
+            time.sleep(randrange(1, 3))
+        except requests.exceptions.Timeout as error:
+            print("Timeout Error:", error)
+            time.sleep(randrange(1, 3))
+        except requests.exceptions.RequestException as error:
+            print("OOps: Something Else", error)
+            time.sleep(randrange(1, 3))
+        else:
+            return response
 
 
 def get_category_pages_number(category_url):
-    response = tululu_response(category_url)
+    response = get_tululu_response(category_url)
     if response is None:
         return
     soup = BeautifulSoup(response.text, 'lxml')
-    category_pages_number = soup.select('p.center a.npage')
-    return int(category_pages_number[-1].text) if category_pages_number else 1
+    category_page_numbers = soup.select('p.center a.npage')
+    return int(category_page_numbers[-1].text) if category_page_numbers else 1
 
 
 def get_book_ids(category_url, start_page, end_page):
     ids_for_category = []
     for category_page_number in range(start_page, end_page+1):
         category_page_url = urljoin(category_url, str(category_page_number))
-        response = tululu_response(category_page_url)
+        response = get_tululu_response(category_page_url)
         if response is None:
             continue
         soup = BeautifulSoup(response.text, 'lxml')
         books_links = soup.select('table.d_book div.bookimage a')
-    # .replace('/', '') испольщутся, чтобы от адреса абсолютного адреса вида /id/ отсечь слеши для получения "чистого" id
-    # далее они используются в имени файлов и генерации пути
         ids_for_category.extend(
-            [book_link.get('href').replace('/', '') for book_link in books_links])
+            [book_link.get('href').rsplit('/')[-2] for book_link in books_links])
     return ids_for_category
 
 
@@ -56,7 +65,7 @@ def download_txt(book_url, book_id, book_name,
                  directory_for_save):
     books_dir_path = Path.joinpath(directory_for_save, 'books')
     Path(books_dir_path).mkdir(parents=True, exist_ok=True)
-    response = tululu_response(book_url)
+    response = get_tululu_response(book_url)
     if response is None:
         return
     path_for_saving = Path.joinpath(
@@ -70,7 +79,7 @@ def download_image(image_url, book_id,
                    directory_for_save):
     images_dir_path = Path.joinpath(directory_for_save, 'images')
     Path(images_dir_path).mkdir(parents=True, exist_ok=True)
-    response = tululu_response(image_url)
+    response = get_tululu_response(image_url)
     if response is None:
         return
     path_for_saving = Path.joinpath(
@@ -81,52 +90,52 @@ def download_image(image_url, book_id,
 
 
 def parse_book_url(url):
-    book_info = {}
-    response = tululu_response(url)
+    parsed_book = {}
+    response = get_tululu_response(url)
     if response is None:
         return
     soup = BeautifulSoup(response.text, 'lxml')
     try:
-        book_info['book_title'], book_info['book_author'] = soup.select_one(
+        parsed_book['book_title'], parsed_book['book_author'] = soup.select_one(
             'h1').text.split(" \xa0 :: \xa0 ")
-        book_info['book_url'] = urljoin(url, soup.find(
-            'a', title=f'{book_info["book_title"]} - скачать книгу txt')['href'])
+        parsed_book['book_url'] = urljoin(url, soup.find(
+            'a', title=f'{parsed_book["book_title"]} - скачать книгу txt')['href'])
         img_url = soup.select_one('div.bookimage img').get('src')
         if 'nopic.gif' not in img_url:
-            book_info['book_image_url'] = urljoin(url, img_url)
+            parsed_book['book_image_url'] = urljoin(url, img_url)
         comments = soup.select('div.texts span.black')
-        book_info['comments'] = [comment.text for comment in comments]
+        parsed_book['comments'] = [comment.text for comment in comments]
         genres = soup.select_one('div#content span.d_book').select('a')
-        book_info['genres'] = [genre.text for genre in genres]
+        parsed_book['genres'] = [genre.text for genre in genres]
     except Exception:
         return
-    return book_info
+    return parsed_book
 
 
 def download_books(book_ids, args):
-    downloaded_books_info = []
+    parsed_books = []
     for book_id in book_ids:
         book_url = urljoin('http://tululu.org/', book_id)
-        book_info = parse_book_url(book_url)
-        if book_info is None:
+        parsed_book = parse_book_url(book_url)
+        if parsed_book is None:
             continue
-        book_info['book_id'] = book_id
+        parsed_book['book_id'] = book_id
         if not args.skip_txt:
-            book_info['book_path'] = download_txt(book_info['book_url'],
-                                                  book_info['book_id'],
-                                                  sanitize_filename(
-                book_info['book_title']),
+            parsed_book['book_path'] = download_txt(parsed_book['book_url'],
+                                                    parsed_book['book_id'],
+                                                    sanitize_filename(
+                parsed_book['book_title']),
                 args.dest_folder)
             print(
-                f'''Downloaded '{book_info["book_title"]}' - {book_info["book_author"]} '''
-                f'''from http://tululu.org/{book_info["book_id"]}''')
+                f'''Downloaded '{parsed_book["book_title"]}' - {parsed_book["book_author"]} '''
+                f'''from http://tululu.org/{parsed_book["book_id"]}''')
 
-        if 'book_image_url' in book_info and not args.skip_imgs:
-            book_info['img_src'] = download_image(book_info['book_image_url'],
-                                                  book_info['book_id'],
-                                                  args.dest_folder)
-        downloaded_books_info.append(book_info)
-    return downloaded_books_info
+        if 'book_image_url' in parsed_book and not args.skip_imgs:
+            parsed_book['img_src'] = download_image(parsed_book['book_image_url'],
+                                                    parsed_book['book_id'],
+                                                    args.dest_folder)
+        parsed_books.append(parsed_book)
+    return parsed_books
 
 
 def save_books_json(books_info, json_file_name, dest_folder):
