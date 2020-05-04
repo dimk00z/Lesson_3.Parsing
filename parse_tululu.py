@@ -102,8 +102,8 @@ def parse_book_url(url):
             parsed_book['comments'] = [comment.text for comment in comments]
             genres = soup.select_one('div#content span.d_book').select('a')
             parsed_book['genres'] = [genre.text for genre in genres]
-        except Exception:
-            return
+        except:
+            print("Unexpected error:", sys.exc_info()[0])
         return parsed_book
 
 
