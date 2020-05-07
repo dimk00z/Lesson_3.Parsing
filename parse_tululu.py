@@ -74,24 +74,21 @@ def download_image(response, book_id,
 
 
 def parse_book_url(response, url, book_id):
-    try:
-        parsed_book = {}
-        parsed_book['book_id'] = book_id
-        soup = BeautifulSoup(response.text, 'lxml')
-        parsed_book['book_title'], parsed_book['book_author'] = soup.select_one(
-            'h1').text.split(" \xa0 :: \xa0 ")
-        parsed_book['book_url'] = urljoin(url, soup.find(
-            'a', title=f'{parsed_book["book_title"]} - скачать книгу txt')['href'])
-        img_url = soup.select_one('div.bookimage img').get('src')
-        if 'nopic.gif' not in img_url:
-            parsed_book['book_image_url'] = urljoin(url, img_url)
-        comments = soup.select('div.texts span.black')
-        parsed_book['comments'] = [comment.text for comment in comments]
-        genres = soup.select_one('div#content span.d_book').select('a')
-        parsed_book['genres'] = [genre.text for genre in genres]
-        return parsed_book
-    except:
-        print(f"Unexpected error:{sys.exc_info()[0]} for {url}")
+    parsed_book = {}
+    parsed_book['book_id'] = book_id
+    soup = BeautifulSoup(response.text, 'lxml')
+    parsed_book['book_title'], parsed_book['book_author'] = soup.select_one(
+        'h1').text.split(" \xa0 :: \xa0 ")
+    parsed_book['book_url'] = urljoin(url, soup.find(
+        'a', title=f'{parsed_book["book_title"]} - скачать книгу txt')['href'])
+    img_url = soup.select_one('div.bookimage img').get('src')
+    if 'nopic.gif' not in img_url:
+        parsed_book['book_image_url'] = urljoin(url, img_url)
+    comments = soup.select('div.texts span.black')
+    parsed_book['comments'] = [comment.text for comment in comments]
+    genres = soup.select_one('div#content span.d_book').select('a')
+    parsed_book['genres'] = [genre.text for genre in genres]
+    return parsed_book
 
 
 def save_books_json(downloaded_books, json_file_name, dest_folder):
@@ -122,6 +119,7 @@ def get_arguments(parser):
 
 def main():
     args = get_arguments(argparse.ArgumentParser())
+
     category_response = get_tululu_response(args.category_url, False)
     if category_response is None:
         print(f'Can not connect to category url {args.category_url}')
@@ -142,27 +140,28 @@ def main():
     for book_id in book_ids:
         book_url = urljoin('http://tululu.org/', book_id)
         book_response = get_tululu_response(book_url)
-        parsed_book = parse_book_url(book_response, book_url, book_id)
-        if parsed_book is None:
-            continue
-        if not args.skip_txt:
-            txt_response = get_tululu_response(
-                parsed_book['book_url'])
-            parsed_book['book_path'] = download_txt(txt_response,
-                                                    parsed_book['book_id'],
-                                                    sanitize_filename(
-                                                        parsed_book['book_title']),
-                                                    args.dest_folder)
-            print(
-                f'''Downloaded '{parsed_book["book_title"]}' - {parsed_book["book_author"]} '''
-                f'''from http://tululu.org/{parsed_book["book_id"]}''')
-        if 'book_image_url' in parsed_book and not args.skip_imgs:
-            image_response = get_tululu_response(
-                parsed_book['book_image_url'])
-            parsed_book['img_src'] = download_image(image_response,
-                                                    parsed_book['book_id'],
-                                                    args.dest_folder)
-        downloaded_books.append(parsed_book)
+        try:
+            parsed_book = parse_book_url(book_response, book_url, book_id)
+            if not args.skip_txt:
+                txt_response = get_tululu_response(
+                    parsed_book['book_url'])
+                parsed_book['book_path'] = download_txt(txt_response,
+                                                        parsed_book['book_id'],
+                                                        sanitize_filename(
+                                                            parsed_book['book_title']),
+                                                        args.dest_folder)
+                print(
+                    f'''Downloaded '{parsed_book["book_title"]}' - {parsed_book["book_author"]} '''
+                    f'''from http://tululu.org/{parsed_book["book_id"]}''')
+            if 'book_image_url' in parsed_book and not args.skip_imgs:
+                image_response = get_tululu_response(
+                    parsed_book['book_image_url'])
+                parsed_book['img_src'] = download_image(image_response,
+                                                        parsed_book['book_id'],
+                                                        args.dest_folder)
+            downloaded_books.append(parsed_book)
+        except:
+            print(f"Unexpected error:{sys.exc_info()[0]} for {book_url}")
 
     save_books_json(downloaded_books, args.json_path, args.dest_folder)
     print(f'Total {len(downloaded_books)} books downloaded')
