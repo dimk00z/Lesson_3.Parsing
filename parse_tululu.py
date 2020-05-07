@@ -12,12 +12,14 @@ from pathvalidate import sanitize_filename
 CONECTIONS_ATTEMPTS = 3
 
 
-def get_tululu_response(url):
+def get_tululu_response(url, allow_redirects=True):
     headers = {"User-Agent": 'Mozilla/5.0 (X11 Linux x86_64) AppleWebKit/537.36 \
             (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'}
     for connection_attempt in range(CONECTIONS_ATTEMPTS):
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(
+                url, headers=headers,
+                allow_redirects=allow_redirects)
             response.raise_for_status()
             if response.status_code in [301, 302]:
                 return
@@ -120,12 +122,15 @@ def get_arguments(parser):
 
 def main():
     args = get_arguments(argparse.ArgumentParser())
-    category_response = get_tululu_response(args.category_url)
+    category_response = get_tululu_response(args.category_url, False)
+    if category_response is None:
+        print(f'Can not connect to category url {args.category_url}')
+        sys.exit()
     category_pages_number = get_category_pages_number(category_response)
     # минимальное значение используется, если пользователь ввел страницу большую, чем есть в категории
     end_page = min(
         args.end_page, category_pages_number) if args.end_page else category_pages_number
-    
+
     book_ids = []
     for category_page_number in range(args.start_page, end_page+1):
         category_page_url = urljoin(
