@@ -3,40 +3,24 @@ import time
 import json
 import argparse
 import sys
+import re
 from urllib.parse import urljoin
 from random import randrange
 from bs4 import BeautifulSoup
 from pathlib import Path
 from pathvalidate import sanitize_filename
 
-CONECTIONS_ATTEMPTS = 3
 
-
-def get_tululu_response(url, allow_redirects=True):
+def send_request_to_tululu(url, allow_redirects=True):
     headers = {"User-Agent": 'Mozilla/5.0 (X11 Linux x86_64) AppleWebKit/537.36 \
             (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'}
-    for connection_attempt in range(CONECTIONS_ATTEMPTS):
-        try:
-            response = requests.get(
-                url, headers=headers,
-                allow_redirects=allow_redirects)
-            response.raise_for_status()
-            if response.status_code in [301, 302]:
-                return
-        except requests.exceptions.HTTPError as error:
-            print("Http Error:", error)
-            time.sleep(randrange(1, 3))
-        except requests.exceptions.ConnectionError as error:
-            print("Error Connecting:", error)
-            time.sleep(randrange(1, 3))
-        except requests.exceptions.Timeout as error:
-            print("Timeout Error:", error)
-            time.sleep(randrange(1, 3))
-        except requests.exceptions.RequestException as error:
-            print("OOps: Something Else", error)
-            time.sleep(randrange(1, 3))
-        else:
-            return response
+    response = requests.get(
+        url, headers=headers,
+        allow_redirects=allow_redirects)
+    response.raise_for_status()
+    if response.status_code in [301, 302]:
+        raise requests.exceptions.HTTPError
+    return response
 
 
 def get_category_pages_number(response):
@@ -75,12 +59,11 @@ def download_image(response, book_id,
 
 def parse_book_url(response, url, book_id):
     parsed_book = {}
-    parsed_book['book_id'] = book_id
+    parsed_book['book_id'] = re.sub('\D', '', book_id)
     soup = BeautifulSoup(response.text, 'lxml')
     parsed_book['book_title'], parsed_book['book_author'] = soup.select_one(
         'h1').text.split(" \xa0 :: \xa0 ")
-    parsed_book['book_url'] = urljoin(url, soup.find(
-        'a', title=f'{parsed_book["book_title"]} - скачать книгу txt')['href'])
+    parsed_book['book_url'] = f"http://tululu.org/txt.php?id={parsed_book['book_id']}"
     img_url = soup.select_one('div.bookimage img').get('src')
     if 'nopic.gif' not in img_url:
         parsed_book['book_image_url'] = urljoin(url, img_url)
@@ -119,32 +102,42 @@ def get_arguments(parser):
 
 def main():
     args = get_arguments(argparse.ArgumentParser())
-
-    category_response = get_tululu_response(args.category_url, False)
-    if category_response is None:
-        print(f'Can not connect to category url {args.category_url}')
+    try:
+        category_response = send_request_to_tululu(
+            args.category_url, False)
+    except requests.exceptions.HTTPError:
+        print(
+            f'Can not connect to category url {args.category_url}')
         sys.exit()
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as error:
+        print("Connection error:", error)
+
     category_pages_number = get_category_pages_number(category_response)
-    # минимальное значение используется, если пользователь ввел страницу большую, чем есть в категории
     end_page = min(
         args.end_page, category_pages_number) if args.end_page else category_pages_number
 
     book_ids = []
+
     for category_page_number in range(args.start_page, end_page+1):
         category_page_url = urljoin(
             args.category_url, str(category_page_number))
-        response = get_tululu_response(category_page_url)
-        book_ids.extend(get_book_ids(response))
+        try:
+            response = send_request_to_tululu(category_page_url)
+            book_ids.extend(get_book_ids(response))
+        except (requests.exceptions.HTTPError,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout) as error:
+            print("Connection error: ", error)
 
     downloaded_books = []
     for book_id in book_ids:
-        book_url = urljoin('http://tululu.org/', book_id)
-        book_response = get_tululu_response(book_url)
+        book_url = urljoin('http://tululu.org/b', book_id)
         try:
+            book_response = send_request_to_tululu(book_url)
             parsed_book = parse_book_url(book_response, book_url, book_id)
             if not args.skip_txt:
-                txt_response = get_tululu_response(
-                    parsed_book['book_url'])
+                txt_response = send_request_to_tululu(
+                    parsed_book['book_url'], False)
                 parsed_book['book_path'] = download_txt(txt_response,
                                                         parsed_book['book_id'],
                                                         sanitize_filename(
@@ -154,14 +147,17 @@ def main():
                     f'''Downloaded '{parsed_book["book_title"]}' - {parsed_book["book_author"]} '''
                     f'''from http://tululu.org/{parsed_book["book_id"]}''')
             if 'book_image_url' in parsed_book and not args.skip_imgs:
-                image_response = get_tululu_response(
+                image_response = send_request_to_tululu(
                     parsed_book['book_image_url'])
                 parsed_book['img_src'] = download_image(image_response,
                                                         parsed_book['book_id'],
                                                         args.dest_folder)
             downloaded_books.append(parsed_book)
-        except:
-            print(f"Unexpected error:{sys.exc_info()[0]} for {book_url}")
+        except requests.exceptions.HTTPError as error:
+            print(f"{book_url} doesn't have downloadable book", error)
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout) as error:
+            print(f"Connection error with :  {book_url}", error)
 
     save_books_json(downloaded_books, args.json_path, args.dest_folder)
     print(f'Total {len(downloaded_books)} books downloaded')
